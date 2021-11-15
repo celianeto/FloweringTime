@@ -1,0 +1,1587 @@
+---
+title: "Ft"
+output: html_document
+---
+
+# Before starting
+need to add colours, shapes, special fucntions (n on boxplots, circles on maps)
+```{r, echo=FALSE, include=FALSE}
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(RColorBrewer)
+library(viridis)
+library(leaflet)
+library(scales)
+library(heritability)
+library(tidyverse)
+library(rstatix)
+library(data.table)
+
+
+## extra functions: run them now
+# for plotting maps
+addLegendCustom <- function(map, title, colors, labels, sizes, opacity = 0.5){
+  colorAdditions <- paste0(colors, "; border-radius: 50%; width:", sizes, "px; height:", sizes, "px")
+  labelAdditions <- paste0("<div style='display: inline-block;height: ", 
+                           sizes, "px;margin-top: 4px;line-height: ", sizes, "px;'>", 
+                           labels, "</div>")
+  titleAdditions<- title
+  
+  return(addLegend(map, colors = colorAdditions, 
+                   labels = labelAdditions, opacity = opacity, title = title))
+}
+
+# n in boxplot
+stat_box_data <- function(y, lower_limit = 10) {
+  return( 
+    data.frame(y = lower_limit,
+               label = paste('n =', length(y))
+    )
+  )
+}
+
+# normalization
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+# calculate mean and SD per group
+data_summary <- function(data, varname, groupnames){
+  require(plyr)
+  summary_func <- function(x, col){
+    c(mean = mean(x[[col]], na.rm=TRUE),
+      sd = sd(x[[col]], na.rm=TRUE))
+  }
+  data_sum<-ddply(data, groupnames, .fun=summary_func,
+                  varname)
+  data_sum <- rename(data_sum, c("mean" = varname))
+  return(data_sum)
+}
+
+## colours and shapes
+fogo_col <- "#FFA405"
+sa_col <- "#0075DC"
+mor_col <-"#2BCE48"
+fogo_shape <- 17
+sa_shape <- 16
+mor_shape <- 18
+S_Fig= "#B0E0E6"
+S_Cova= "#00BFFF"
+S_Pico= "#1E90FF"
+S_Espong= "#0000FF"
+F_MonteVelha= "#FF7F50"
+F_Lava= "#FF8C00"
+F_Inferno= '#FF4500'
+mor_clusters <- c("#006400", "#00FF00", "#90EE90", "#7FFF00")
+
+
+## statistical comparisons between pops
+my_comparisons <- list( c("SA", "Fogo"), c("Fogo", "Mor"), c("SA", "Mor"))
+
+## theme
+my_theme <- theme_bw() +
+  theme(axis.line = element_line(colour = "black"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_rect(colour = "black"),
+        panel.background = element_blank(), 
+        axis.text = element_text(size = 7, colour = "black"), 
+        axis.title = element_text(size = 7, colour = "black"), 
+        legend.position = "none")
+```
+
+
+# 1. Maps and PCAs
+```{r, echo=TRUE, include=TRUE}
+
+# in terminal
+# run pca in plink
+#plink1.9 --file <input VCF> --pca --out CapeVerde_SNPs_Indels_Final_segregating
+
+# manually edit eigen file by adding pops and clusters
+
+# plot Cape Verde
+eigenvec=read.table("../../GATK/CapeVerde_SNPs_Indels_Final_segregating.eigenvec", header=F)
+head(eigenvec)
+pca=ggplot(eigenvec, aes(x=eigenvec$V5, y=eigenvec$V6, 
+                         color=eigenvec$V2, shape = eigenvec$V2)) + 
+  geom_point()+ 
+  #geom_text(aes(label=V3),hjust=0, vjust=0, size=2.5, check_overlap = T) +
+  my_theme +
+  scale_color_manual(values = c(fogo_col, sa_col)) +
+  scale_shape_manual(values =c(17, 16)) +
+  xlab("PC1 (57.50%)") + ylab("PC2 (34.39%)")
+pca
+
+ggsave(plot = pca, filename = "./PCA.pdf", width = 8.5, height = 6, units = "cm")
+
+# plot SA
+eigenvec=read.table("../../GATK/SA/SA_SNPs_Indels_Final_segregating.eigenvec", header=F)
+head(eigenvec)
+pca=ggplot(eigenvec, aes(x=eigenvec$V3, y=eigenvec$V4, 
+                         color=eigenvec$V2, shape = eigenvec$V2)) + 
+  geom_point()+ 
+  #geom_text(aes(label=V3),hjust=0, vjust=0, size=2.5, check_overlap = T) +
+  my_theme +
+  scale_color_manual(values = c(S_Cova, S_Espong, S_Fig, S_Pico)) +
+  scale_shape_manual(values =c(18, 15, 16, 17)) +
+  xlab("PC1 (23.41%)") + ylab("PC2 (20.60%)")
+pca
+
+ggsave(plot = pca, filename = "./PC_SA.pdf", width = 7.5, height = 4.5, units = "cm")
+
+# plot Fogo
+eigenvec=read.table("../../GATK/Fogo/Fogo_SNPs_Indels_Final_segregating.eigenvec", header=F)
+head(eigenvec)
+pca=ggplot(eigenvec, aes(x=eigenvec$V3, y=eigenvec$V4, 
+                         color=eigenvec$V2, shape = eigenvec$V2)) + 
+  geom_point()+ 
+  #geom_text(aes(label=V3),hjust=0, vjust=0, size=2.5, check_overlap = T) +
+  my_theme +
+  scale_color_manual(values = c(F_Inferno, F_Lava, F_MonteVelha)) +
+  scale_shape_manual(values =c(18, 17, 16)) +
+  xlab("PC1 (13.58%)") + ylab("PC2 (12.35%)")
+pca
+
+ggsave(plot = pca, filename = "./PC_Fogo.pdf", width = 7.5, height = 4.5, units = "cm")
+
+# plot Morocco
+eigenvec=read.table("../../GATK/Morocco/plink.eigenvec", header=F)
+head(eigenvec)
+pca=ggplot(eigenvec, aes(x=eigenvec$V3, y=eigenvec$V4, 
+                         color=eigenvec$V2, shape = eigenvec$V2)) + 
+  geom_point()+ 
+  #geom_text(aes(label=V3),hjust=0, vjust=0, size=2.5, check_overlap = T) +
+  my_theme +
+  scale_color_manual(values = mor_clusters) +
+  scale_shape_manual(values =c(18, 17, 16, 15)) +
+  xlab("PC1 (13.58%)") + ylab("PC2 (12.35%)")
+pca
+
+ggsave(plot = pca, filename = "./PC_Mor.pdf", width = 7.5, height = 4.5, units = "cm")
+```
+
+
+# 2. Simulated conditions
+## 2.1. CVI simulated conditions
+```{r, echo=TRUE, include=TRUE}
+#CVI conditions
+chamber_cvi=read.table("../../Experiments/cvi_conditions_chamber.txt", header = T)  
+head(chamber_cvi)
+chamber_cvi$Day <- as.Date(chamber_cvi$Day, format = "%d.%m.%Y")
+chamber_cvi$newTime = paste(chamber_cvi$Day, chamber_cvi$Time)
+chamber_cvi$newTime2=as.POSIXct(chamber_cvi$newTime, format="%Y-%m-%d %H:%M:%S")
+
+lims <- as.POSIXct(strptime(c("0000-01-01 05:00","0000-03-10 00:00"), format = "%Y-%m-%d %H:%M"))   
+
+labels <- seq(from = as.POSIXct(strptime("0000-01-01 05:00", format = "%Y-%m-%d %H:%M")), 
+              to = as.POSIXct(strptime("0000-03-10 00:00", format = "%Y-%m-%d %H:%M")), by = 7*24*60*60)    
+
+# plot
+ggplot(chamber_cvi[chamber_cvi$Day < "0000-03-10",]) + 
+  geom_line(aes(x=newTime2, y=Temperature, color = "Temperature (??C)")) + 
+  geom_line(aes(x=newTime2, y=Humidity, color="Humidity (%)")) +
+  geom_vline(xintercept = chamber_cvi[chamber_cvi$Watering == "1", "newTime2"], colour = "#619CFF") +
+  my_theme + theme(axis.text.x = element_blank(), axis.title.x = element_blank(), axis.ticks.x = element_blank()) +
+  xlab("Days after sowing") + 
+  ylab("Value") +
+  scale_color_manual(values=c("#00BA38",  "#F8766D" )) +
+  scale_x_datetime(labels = date_format("%j"), limits = lims, breaks = labels) +
+  ylim(0, 100)
+
+```
+
+## 2.2. Moroccan simulated conditions 
+```{r, echo=TRUE, include=TRUE}
+#Mor conditions
+chamber_mor=read.table("./Experiments/Mor_conditions_chamber.txt", header = T)  
+head(chamber_mor)
+chamber_mor$Day <- as.Date(chamber_mor$Day, format = "%d.%m.%Y")
+chamber_mor$newTime = paste(chamber_mor$Day, chamber_mor$Time)
+chamber_mor$newTime2=as.POSIXct(chamber_mor$newTime, format="%Y-%m-%d %H:%M:%S")
+
+lims <- as.POSIXct(strptime(c("0000-01-01 05:00","0000-03-10 00:00"), format = "%Y-%m-%d %H:%M"))   
+
+labels <- seq(from = as.POSIXct(strptime("0000-01-01 05:00", format = "%Y-%m-%d %H:%M")), 
+              to = as.POSIXct(strptime("0000-03-10 00:00", format = "%Y-%m-%d %H:%M")), by = 7*24*60*60)    
+
+# plot
+ggplot(chamber_mor[chamber_mor$Day < "0000-03-10",]) + 
+  geom_line(aes(x=newTime2, y=Temp, color = "Temperature (??C)")) + 
+  geom_line(aes(x=newTime2, y=Humidity, color="Humidity (%)")) +
+  geom_vline(xintercept = chamber_mor[chamber_mor$Watering == "1", "newTime2"], colour = "#619CFF") +
+  my_theme + theme(axis.text.x = element_blank(), axis.title.x = element_blank(), axis.ticks.x = element_blank()) +
+  xlab("Days after sowing") + 
+  ylab("Value") +
+  scale_color_manual(values=c("#00BA38",  "#F8766D" )) +
+  scale_x_datetime(labels = date_format("%j"), limits = lims, breaks = labels) +
+  ylim(0, 100)
+
+```
+
+## 2.3. Phenotypic comparison
+```{r}
+# pheno both conditions
+cvi_mor= read.table("./Ft_everything.txt", header = T)
+head(cvi_mor)
+
+# median
+cvi_mor_median= aggregate(cvi_mor[, c("Bolting_CVI", "Bolting_Mor")], 
+                          list(cvi_mor$ID, cvi_mor$Island, cvi_mor$Population, cvi_mor$Cluster, cvi_mor$Latitude, cvi_mor$Longitude, cvi_mor$FRI, cvi_mor$CRY2, cvi_mor$ATX2, cvi_mor$NRT1, cvi_mor$ANR1), 
+                          FUN = median, na.action= "na.pass")
+head(cvi_mor_median)
+colnames(cvi_mor_median) <- c("ID", "Island", "Pop", "Cluster", "Lat", "Long", "FRI", "CRY2", "ATX2", "NRT1", "ANR1", "Bolting_CVI", "Bolting_Mor")
+
+# jitter points + melt
+b <- runif(nrow(cvi_mor_median), -0.2, 0.2)
+cvi_mor_median_melt = reshape2::melt(cvi_mor_median)
+head(cvi_mor_median_melt)
+
+# plot pops of interest only
+cvi_mor_median_melt_islands = cvi_mor_median_melt[!cvi_mor_median_melt$Island == 'Mutants' & !cvi_mor_median_melt$Island == "Control" ,]
+
+#plot
+ggplot(cvi_mor_median_melt_islands[cvi_mor_median_melt_islands$variable == "Bolting_CVI" | cvi_mor_median_melt_islands$variable == "Bolting_Mor",]) +
+  geom_point(aes(x = as.numeric(variable) + b, y = value, colour = Island), alpha = 0.6) +
+  geom_line(aes(x  = as.numeric(variable) + b, y = value, group = ID, colour = Island), alpha = 0.1) +
+  scale_x_continuous(breaks = c(1, 6), labels = c("CVI conditions", "Mor conditions"))+
+  xlab("Conditions") + ylab("Days to bolting") +
+  my_theme + theme(axis.title.y.right = element_text( angle = 90),
+                   axis.text.y.right = element_text(angle = 90)) +
+  scale_y_continuous(position = "right") +
+  scale_color_manual(values = c(fogo_col, mor_col, sa_col))
+
+
+wilcox.test(cvi_mor_median[cvi_mor_median$Island == "SA" | cvi_mor_median$Island == "Fogo", "Bolting_CVI"],
+            cvi_mor_median[cvi_mor_median$Island == "SA" | cvi_mor_median$Island == "Fogo", "Bolting_Mor"])
+
+t.test(cvi_mor_median[cvi_mor_median$Island == "SA" | cvi_mor_median$Island == "Fogo", "Bolting_CVI"],
+            cvi_mor_median[cvi_mor_median$Island == "SA" | cvi_mor_median$Island == "Fogo", "Bolting_Mor"])
+```
+
+
+# 3. CVI simulated conditions
+## 3.1. Summary statistics
+```{r, echo=TRUE, include=TRUE}
+#number of observations
+length(cvi_mor_median[cvi_mor_median$Island == "SA", "Bolting_Mor"])
+length(cvi_mor_median[cvi_mor_median$Island == "Fogo", "Bolting_Mor"])
+length(cvi_mor_median[cvi_mor_median$Island == "Mor", "Bolting_Mor"])
+
+#mean
+mean(cvi_mor[cvi_mor$Island == "SA", "Bolting_Mor"], na.rm = T)
+mean(cvi_mor[cvi_mor$Island == "Fogo", "Bolting_Mor"], na.rm = T)
+mean(cvi_mor[cvi_mor$Island == "Mor", "Bolting_Mor"], na.rm = T)
+
+#sd
+sd(cvi_mor[cvi_mor$Island == "SA", "Bolting_Mor"], na.rm = T)
+sd(cvi_mor[cvi_mor$Island == "Fogo", "Bolting_Mor"], na.rm = T)
+sd(cvi_mor[cvi_mor$Island == "Mor", "Bolting_Mor"], na.rm = T)
+
+#broad-sense heritability aka repeatibility 
+repeatability(cvi_mor[cvi_mor$Island == "SA", "Bolting_CVI"], cvi_mor[cvi_mor$Island == "SA", "ID"], line.repeatability = T)
+repeatability(cvi_mor[cvi_mor$Island == "Fogo", "Bolting_CVI"], cvi_mor[cvi_mor$Island == "Fogo", "ID"], line.repeatability = T)
+repeatability(cvi_mor[cvi_mor$Island == "Mor", "Bolting_CVI"], cvi_mor[cvi_mor$Island == "Mor", "ID"], line.repeatability = T)
+
+
+```
+
+
+## 3.2. Plotting maps with flowering time
+```{r, include=TRUE, echo=TRUE}
+
+head(cvi_mor_median)
+#jitter coordinates 
+b <- runif(nrow(cvi_mor_median), -0.004, 0.004)
+c <- runif(nrow(cvi_mor_median), -0.004, 0.004)
+
+cvi_mor_median$lat_jitter <- cvi_mor_median$Lat + b
+cvi_mor_median$long_jitter <- cvi_mor_median$Long + c
+
+#get colours 
+my_colours <- viridis_pal()(30)
+my_colours <- rev(my_colours[11:30])
+pal <- colorNumeric(my_colours,
+  # colors depend on the count variable
+  domain = cvi_mor_median$Bolting_CVI,
+)
+
+#plot: map is interactive, choose zoom manually or plot pop by pop with cvi_mor_median[cvi_mor_median$Island == "Mor",], replacing Mor with SA or Fogo
+leaflet(na.omit(cvi_mor_median)) %>%
+  addProviderTiles("Esri.WorldImagery") %>%
+  #addTiles() %>%
+  addCircleMarkers(lng = ~ long_jitter, lat = ~ lat_jitter, 
+                   #radius = ~V6/5,
+                   radius = 7,
+                   color = ~pal(Bolting_CVI), fillOpacity = 1, stroke = F) %>%
+  addLegend(pal = pal,
+    values = ~Bolting_CVI,
+    position = "topright",
+    title = "Bolting:",
+    opacity = 1) %>%
+  addMiniMap(tiles = "Esri.WorldImagery", position = "bottomleft") %>%
+  addScaleBar(position = "bottomright", options = scaleBarOptions(metric = T, imperial = F)) 
+```
+
+## 3.3. Plotting phenotypic distribution 
+```{r, include=TRUE, echo=TRUE}
+# n in histo
+dat_text <- data.frame(
+  label = c("n = 62", "n = 174", "n = 129"),
+  Island   = c("Mor", "SA", "Fogo")
+)
+
+# plot bolting time per pop
+ggplot(cvi_mor_median[!cvi_mor_median$Island == "Control" & !cvi_mor_median$Island == "Mutants",], 
+       aes(x=Bolting_CVI, y= Island)) + 
+  geom_boxplot(outlier.colour = "white") + 
+  geom_jitter(aes(colour = Island), alpha = 0.6) +
+  ylab('Number of individuals') + xlab("Days to bolting") +
+  scale_colour_manual(values=c(fogo_col, mor_col, sa_col)) +
+  my_theme + scale_x_continuous(limits = c(18, 67), breaks = c(25, 45, 65)) +
+  facet_wrap(.~factor(Island, levels=c("Mor", "SA", "Fogo")), nrow = 3, scales = "free", ) +
+  theme(strip.background = element_blank(), strip.text = element_blank(),
+        axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank(), 
+        panel.border = element_blank()) #+
+  geom_text(data = dat_text, mapping = aes(x = 25, y = 43, label = label), size=2)
+
+```
+
+
+# 4. Mapping
+Only mapping for one pop and phenotype is shown. For different pops, replace the initial VCF file.  
+Same for plotting.  
+
+## 4.1. Running BSLMM
+1. Run BSLMM in GEMMA 10 times:  
+<./gemma -bfile SA_SNPs_Indels_Final_segregating -k ./output/SA_SNPs_Indels_Final_segregating.cXX.txt -bslmm 1 -n 2 -s 10000000 -w 2500000 -o SA_SNPs_Indels_Final_segregating_PHENOTYPE_BSLMM>  
+-n is the phenotype number; -s and -w are sampling and burn-in steps, respectively  
+  
+2. Get average and CI over the 10 runs (adapted from http://romainvilloutreix.alwaysdata.net/romainvilloutreix/wp-content/uploads/2017/01/gwas_gemma-2017-01-17.pdf)
+  
+## 4.2. Running GEMMA: in terminal
+1. From a VCF file per pop, create input for PLINK, as such:  
+<vcftools --vcf SA_SNPs_Indels_Final_segregating.vcf.recode.vcf --plink --out SA_SNPs_Indels_Final_segregating>  
+  
+2. Create GEMMA input in PLINK:  
+<plink1.9 --file SA_SNPs_Indels_Final_segregating --make-bed --out SA_SNPs_Indels_Final_segregating>  
+  
+3. Edit fam file by adding columns with phenotypes. The order of the inds matters and should not be changed!  
+    
+4. In GEMMA, create relatedness matrix:  
+<./gemma -bfile SA_SNPs_Indels_Final_segregating -maf 0.05 -gk 1 -o SA_SNPs_Indels_Final_segregating_maf>  
+  
+5. In GEMMA, run association:    
+<./gemma -bfile SA_SNPs_Indels_Final_segregating -k ./output/SA_SNPs_Indels_Final_segregating_maf.cXX.txt -lmm 4 -n 2 -o SA_SNPs_Indels_Final_segregating_maf.PHENOTYPE>  
+-n 2 indicates the column number with the phenotype  
+  
+6. To add a covariate (e.g., FRI K232X):  
+<./gemma -bfile SA_SNPs_Indels_Final_segregating -k ./output/SA_SNPs_Indels_Final_segregating_maf.cXX.txt -lmm 4 -n 2 -c FRI.cov.txt -o SA_SNPs_Indels_Final_segregating_maf.PHENOTYPE.FRIcov>
+  
+## 4.3. Running Local Score 
+Run scripts scorelocalfunctions.R and localscore.R on the output from GEMMA; from https://forge-dga.jouy.inra.fr/projects/local-score/documents; see https://www.nature.com/articles/s41437-019-0235-x
+
+
+## 4.4. BSLMM
+```{r}
+# change working directory to the folder where you find the BSLMM output
+setwd("./GATK/SA/output/BSLMM_boltingCVI/")
+
+# Get mean, median, and 95% ETPI of hyperparameters
+files  <- list.files(pattern="*hyp.txt")
+tables <- lapply(files, read.table, header = TRUE)
+combined.df <- do.call(rbind , tables)
+head(combined.df)
+
+# pve -> proportion of phenotypic variance explained by the genotypes
+pve<-c("PVE", mean(combined.df$pve),quantile(combined.df$pve, probs=c(0.5,0.025,0.975)))
+
+# pge -> proportion of genetic variance explained by major effect loci
+pge<-c("PGE",mean(combined.df$pge),quantile(combined.df$pge, probs=c(0.5,0.025,0.975)))
+
+# pi -> proportion of variants with non-zero effects
+pi<-c("pi",mean(combined.df$pi),quantile(combined.df$pi, probs=c(0.5,0.025,0.975)))
+
+# n.gamma -> number of variants with major effect
+n.gamma<-c("n.gamma",mean(combined.df$n_gamma),quantile(combined.df$n_gamma, probs=c(0.5,0.025,0.975)))
+
+# get table of hyperparameters
+combined.df.table<-as.data.frame(rbind(pve,pge,pi,n.gamma),row.names=F)
+colnames(combined.df.table)<-c("hyperparam", "mean","median","2.5%", "97.5%")
+
+combined.df.table
+
+# change working directory back 
+setwd("../../../../Github/Ft/")
+```
+
+## 4.5. Plot LMM
+```{r}
+# get data; replace file to plot whatever you want
+fogo_lmm = read.table("../../GATK/Fogo/output/Fogo_SNPs_Indels_Final_segregating_bolting_CVICond_005.assoc.txt", header = T)
+
+# organize data
+bolt <- sa_lmm %>% 
+  
+  # Compute chromosome size
+  group_by(chr) %>% 
+  summarise(chr_len=max(ps)) %>% 
+  
+  # Calculate cumulative position of each chromosome
+  mutate(tot=cumsum(chr_len)-chr_len) %>%
+  
+  # Add this info to the initial dataset
+  left_join(sa_lmm, ., by=c("chr"="chr")) %>%
+  
+  # Add a cumulative position of each SNP
+  arrange(chr, ps) %>%
+  mutate(BPcum=ps+tot) 
+
+# calculate chromosome boundaries
+axisdf = bolt %>% group_by(chr) %>% summarize(end=(max(BPcum)))
+
+# centromeres
+centromeres = c(15084050, 
+                30424192 + 3616850,
+                50115345 + 13590100,
+                73534211 + 3953300, 
+                92119153 + 11705550)
+
+# chromosome center
+chromosomes = c(29920000/2, 
+                49110000 -(49110000-29920000)/2, 
+                72060000 -(72060000-49110000)/2, 
+                90140000-(90140000-72060000)/2, 
+                116610000-(116610000-90140000)/2)
+
+# plot
+ggplot(bolt, aes(x=BPcum, y=-log10(p_lrt))) +
+  geom_vline(xintercept = c(axisdf$end), colour = "black") +
+  geom_vline(xintercept = centromeres, colour = "gray", linetype = 2) +
+  geom_point(alpha=0.8, size = 1, colour = sa_col) + # change colour per pop
+  geom_hline(yintercept = -log10(0.05/nrow(bolt)), size = 0.5, linetype= 2) + # Bonferroni correction
+  scale_x_continuous(label = axisdf$chr, breaks= chromosomes, expand = c(0,0) ) +
+  my_theme+
+  xlab("") + ylab(expression(-log[10](P)))
+
+```
+
+## 4.6. Plot local sccore
+```{r}
+# get data 
+sa_fab = read.table("../../GATK/SA/LindleyScore/Morocco_slopesDSDS_LocScore_example_data_file_ksi_2.txt", header = T)
+
+# organize data
+bolt <- sa_fab %>% 
+  
+  # Compute chromosome size
+  group_by(chr) %>% 
+  summarise(chr_len=max(pos)) %>% 
+  
+  # Calculate cumulative position of each chromosome
+  mutate(tot=cumsum(chr_len)-chr_len) %>%
+  
+  # Add this info to the initial dataset
+  left_join(sa_fab, ., by=c("chr"="chr")) %>%
+  
+  # Add a cumulative position of each SNP
+  arrange(chr, pos) %>%
+  mutate(BPcum=pos+tot) 
+
+
+# plot  (needs axisdf, chromosomes and centromeres objects from above)
+ggplot() +
+  geom_vline(xintercept = c(axisdf$end), colour = "black") +
+  geom_vline(xintercept = centromeres, colour = "gray", linetype = 2) +
+  geom_point(data = bolt, aes(x=BPcum, y=lind), alpha=0.8, size = 1, colour = mor_col) +
+  scale_x_continuous(label = axisdf$chr, breaks= chromosomes, expand = c(0,0) ) +
+  my_theme+
+  xlab("") + ylab("Lindley") 
+```
+
+
+## 4.8. Plot BSLMM
+```{r}
+# change working directory to the folder where you find the BSLMM output
+setwd("../../GATK/SA/output/BSLMM_boltingCVI/")
+#get all param files together
+files  <- list.files(pattern="*param.txt")
+tables <- lapply(files, read.table, header = TRUE)
+combined.df <- do.call(rbind , tables)
+
+# add sparse effect size (= beta * gamma) to data frame
+combined.df["eff"]<-abs(combined.df$beta*combined.df$gamma*2)
+across_runs = aggregate(combined.df[, 5:8], list(combined.df$rs), median)
+head(across_runs)
+across_runs$chr<-as.numeric(substring(across_runs$Group.1, 1, 1))
+across_runs$ps<-as.numeric(substring(across_runs$Group.1, 3))
+
+# organize data
+bolt <- across_runs %>% 
+  group_by(chr) %>% 
+  summarise(chr_len=max(ps)) %>% 
+  mutate(tot=cumsum(chr_len)-chr_len) %>%
+  left_join(across_runs, ., by=c("chr"="chr")) %>%
+  arrange(chr, ps) %>%
+  mutate(BPcum=ps+tot) 
+
+# plot (needs axisdf, chromosomes and centromeres objects from above)
+ggplot(bolt, aes(x=BPcum, y=gamma, size = 1/abs(log(eff)))) +
+  geom_vline(xintercept = c(axisdf$end), colour = "black") +
+  geom_vline(xintercept = centromeres, colour = "gray", linetype = 2) +
+  geom_point(alpha=0.8, colour = sa_col) +
+  scale_x_continuous(label = axisdf$chr, breaks= chromosomes, expand = c(0,0) ) +
+  my_theme+
+  xlab("") + ylab("PIP")
+
+# change working directory back 
+setwd("../../../../Github/Ft/")
+```
+
+
+## 4.9. Candidates
+### NRT1
+```{r}
+head(cvi_mor_median)
+# NRT1 effect in CVI conditions in Ft
+ggplot(cvi_mor_median[cvi_mor_median$Island == "SA",], 
+       aes(x= NRT1, y=Bolting_CVI, colour = NRT1, shape = NRT1)) + 
+  geom_boxplot(outlier.shape = NA, lwd = 0.2) + 
+  geom_jitter(alpha = 0.5, size = 0.5) +
+  xlab('CVI conditions') + ylab("Days to bolting") +
+  scale_colour_manual(values=c("#E69F00", "#56B4E9")) +
+  #scale_y_continuous(breaks = c(25, 45, 65), limits = c(15, 70)) +
+  stat_summary(fun.data = stat_box_data, geom = "text", size = 1.5) +
+  stat_compare_means(comparisons = list(c("Anc", "Der")), size = 2, method = "wilcox.test") +
+  my_theme
+
+# stats
+wilcox.test(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$NRT1 == "Anc", "Bolting_CVI"], cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$NRT1 == "Der", "Bolting_CVI"])
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$NRT1 == "Anc", "Bolting_CVI"])
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$NRT1 == "Der", "Bolting_CVI"])
+nrow(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$NRT1 == "Der",]) / nrow(cvi_mor_median)
+```
+
+### ANR1
+```{r}
+head(cvi_mor_median)
+# ANR1 effect in CVI conditions in Ft
+ggplot(cvi_mor_median[cvi_mor_median$Island == "SA",], 
+       aes(x= ANR1, y=Bolting_CVI, colour = ANR1, shape = ANR1)) + 
+  geom_boxplot(outlier.shape = NA, lwd = 0.2) + 
+  geom_jitter(alpha = 0.5, size = 0.5) +
+  xlab('CVI conditions') + ylab("Days to bolting") +
+  scale_colour_manual(values=c("#E69F00", "#56B4E9")) +
+  #scale_y_continuous(breaks = c(25, 45, 65), limits = c(15, 70)) +
+  stat_summary(fun.data = stat_box_data, geom = "text", size = 1.5) +
+  stat_compare_means(comparisons = list(c("Anc", "Der")), size = 2, method = "wilcox.test") +
+  my_theme
+
+# stats
+wilcox.test(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ANR1 == "Anc", "Bolting_CVI"], cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ANR1 == "Der", "Bolting_CVI"])
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ANR1 == "Anc", "Bolting_CVI"])
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ANR1 == "Der", "Bolting_CVI"])
+nrow(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ANR1 == "Der",]) / nrow(cvi_mor_median)
+```
+
+### ATX2
+```{r}
+head(cvi_mor_median)
+# ATX2 effect in CVI conditions in Ft
+ggplot(cvi_mor_median[cvi_mor_median$Island == "SA",], 
+       aes(x= ATX2, y=Bolting_CVI, colour = ATX2, shape = ATX2)) + 
+  geom_boxplot(outlier.shape = NA, lwd = 0.2) + 
+  geom_jitter(alpha = 0.5, size = 0.5) +
+  xlab('CVI conditions') + ylab("Days to bolting") +
+  scale_colour_manual(values=c("#E69F00", "#56B4E9")) +
+  #scale_y_continuous(breaks = c(25, 45, 65), limits = c(15, 70)) +
+  stat_summary(fun.data = stat_box_data, geom = "text", size = 1.5) +
+  stat_compare_means(comparisons = list(c("Anc", "Der")), size = 2, method = "wilcox.test") +
+  my_theme
+
+# stats
+wilcox.test(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2 == "Anc", "Bolting_CVI"], cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2 == "Der", "Bolting_CVI"])
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2 == "Anc", "Bolting_CVI"])
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2 == "Der", "Bolting_CVI"])
+nrow(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2 == "Der",]) / nrow(cvi_mor_median)
+```
+
+### ATX2 x FRI
+```{r}
+head(cvi_mor_median)
+# ATX2 effect in CVI conditions in Ft corrected for FRI
+cvi_mor_median$ATX2FRI <- paste0("FRI ", cvi_mor_median$FRI, " ATX2 ", cvi_mor_median$ATX2)
+
+ggplot(cvi_mor_median[cvi_mor_median$Island == "SA",], 
+       aes(x= factor(ATX2FRI, level = c('FRI Anc ATX2 Anc', 'FRI Anc ATX2 Der', 'FRI Der ATX2 Anc', 'FRI Der ATX2 Der')), y=Bolting_CVI)) + 
+  geom_boxplot(outlier.shape = NA, lwd = 0.2) + 
+  geom_jitter(alpha = 0.5, size = 1) +
+  xlab('CVI conditions') + ylab("Days to bolt") +
+  #scale_y_continuous(breaks = c(25, 45, 65), limits = c(15, 70)) +
+  stat_summary(fun.data = stat_box_data, geom = "text", size = 1.5) +
+  stat_compare_means(comparisons = list(c('FRI Anc ATX2 Anc', 'FRI Anc ATX2 Der'),
+                                        #c('FRI Anc ATX2 Anc', 'FRI Der ATX2 Anc'),
+                                        #c('FRI Anc ATX2 Anc', 'FRI Der ATX2 Der'),
+                                        #c('FRI Anc ATX2 Der', 'FRI Der ATX2 Anc'),
+                                        #c('FRI Anc ATX2 Der', 'FRI Der ATX2 Der'),
+                                        c('FRI Der ATX2 Anc', 'FRI Der ATX2 Der')), size = 2, method = "wilcox.test", label.y = c(68, 68)) +
+  my_theme + theme(axis.text.x = element_text(angle = 20, vjust = 1, hjust=1))
+
+# stats
+wilcox.test(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2FRI == "FRI Anc ATX2 Anc", "Bolting_CVI"], cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2FRI == "FRI Anc ATX2 Der", "Bolting_CVI"])
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2FRI == "FRI Anc ATX2 Anc", "Bolting_CVI"])
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2FRI == "FRI Anc ATX2 Der", "Bolting_CVI"])
+wilcox.test(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2FRI == "FRI Der ATX2 Anc", "Bolting_CVI"], cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2FRI == "FRI Der ATX2 Der", "Bolting_CVI"])
+
+
+summary(lm(Bolting_CVI ~ FRI * ATX2, data = cvi_mor_median[cvi_mor_median$Island == "SA",]))
+ytt <- TukeyHSD(x=aov(Bolting_CVI ~ FRI * ATX2, data = cvi_mor_median[cvi_mor_median$Island == "SA",]), conf.level = 0.95)
+```
+
+
+## 5.1. CRY2 in the natural pop
+```{r}
+head(cvi_mor_median)
+
+# CRY2 effect in CVI conditions in Ft
+ggplot(cvi_mor_median[cvi_mor_median$Island == "SA",], 
+       aes(x= CRY2, y=Bolting_CVI, colour = CRY2, shape = CRY2)) + 
+  geom_boxplot(outlier.shape = NA, lwd = 0.2) + 
+  geom_jitter(alpha = 0.5, size = 0.5) +
+  xlab('CVI conditions') + ylab("Days to bolting") +
+  scale_colour_manual(values=c("#E69F00", "#56B4E9")) +
+  #scale_y_continuous(breaks = c(25, 45, 65), limits = c(15, 70)) +
+  stat_summary(fun.data = stat_box_data, geom = "text", size = 1.5) +
+  stat_compare_means(comparisons = list(c("Anc", "Der")), size = 2, method = "wilcox.test") +
+  my_theme
+
+# stats
+wilcox.test(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$CRY2 == "Anc", "Bolting_CVI"], cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$CRY2 == "Der", "Bolting_CVI"])
+mean(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$NRT1 == "Anc", "Bolting_CVI"])
+mean(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$NRT1 == "Der", "Bolting_CVI"])
+nrow(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$NRT1 == "Der",]) / nrow(cvi_mor_median)
+
+
+summary(lm(Bolting_CVI ~ FRI + CRY2, data = cvi_mor_median[cvi_mor_median$Island == "SA",]))
+
+
+```
+
+
+## 5.2. CRY2 NILs
+```{r}
+head(cvi_mor)
+nil = cvi_mor[cvi_mor$Population == "Cvi" | cvi_mor$Population == "Ler" | cvi_mor$Population == "LCN1",]
+
+nil_plot = ggplot(nil, aes(x=ID, y=Leaves)) + geom_boxplot() + geom_jitter() +
+  my_theme + xlab("") + ylab("Bolting days") +
+stat_compare_means(comparisons = list(c("Cvi-0", "LCN1-2.5"), c("Cvi-0", "LCN1-2.8"), c("LCN1-2.8", "LCN1-2.5"), 
+                                        c("Cvi-0", "Ler-0"), c("Ler-0", "LCN1-2.5"), c("Ler-0", "LCN1-2.8")), size = 2, method = "wilcox.test")
+
+ggsave(nil_plot, height = 6, width = 11, units = "cm", filename = "./CRY2_nil.pdf")
+
+
+wilcox.test(nil[nil$ID == "LCN1-2.5", "Bolting"], nil[nil$ID == "Ler-0", "Bolting"])
+wilcox.test(nil[nil$ID == "LCN1-2.8", "Bolting"], nil[nil$ID == "Ler-0", "Bolting"])
+
+mean(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2 == "Anc", "Bolting_CVI"])
+mean(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$ATX2 == "Der", "Bolting_CVI"])
+
+wilcox.test(nil[nil$Population == "Cvi", "Bolting_CVI"], nil[nil$Population == "LCN1", "Bolting_CVI"])
+wilcox.test(nil[nil$Population == "Ler", "Bolting_CVI"], nil[nil$Population == "LCN1", "Bolting_CVI"])
+
+group1 = c("Anc", "Cvi", "Ler")
+group2 = c("Der", "LCN1", "LCN1")
+p = c(0.945, 2.896e-05, 0.001156)
+y.position = c(70, 40, 35)
+
+stats = data.frame(group1, group2, p, y.position)
+
+## CRY2: nat pop and NILs
+cry2_plot = ggplot() + 
+  geom_boxplot(data=cvi_mor_median[cvi_mor_median$Island == "SA",], 
+       aes(x= CRY2, y=Bolting_CVI), outlier.shape = NA) + 
+  geom_jitter(data=cvi_mor_median[cvi_mor_median$Island == "SA",], 
+       aes(x= CRY2, y=Bolting_CVI, colour = CRY2), shape = 16) +
+  geom_boxplot(data=nil[nil$Population == "Cvi",], aes(x=Population, y=Bolting_CVI), outlier.shape = NA) +
+  geom_jitter(data=nil[nil$Population == "Cvi",], aes(x=Population, y=Bolting_CVI), shape = 16, colour = "#56B4E9") +
+  geom_boxplot(data=nil[nil$Population == "LCN1",], aes(x=Population, y=Bolting_CVI), outlier.shape = NA) +
+  geom_jitter(data=nil[nil$Population == "LCN1",], aes(x=Population, y=Bolting_CVI), shape = 17, colour = "#56B4E9") +
+  geom_boxplot(data=nil[nil$Population == "Ler",], aes(x=Population, y=Bolting_CVI), outlier.shape = NA) +
+  geom_jitter(data=nil[nil$Population == "Ler",], aes(x=Population, y=Bolting_CVI), shape = 17, colour = "#E69F00") +
+  xlab('CVI conditions') + ylab("Days to bolting") +
+  scale_colour_manual(values=c("#E69F00", "#56B4E9")) +
+  my_theme +
+  scale_x_discrete(limits = c("Anc", "Der", "Cvi", "LCN1", "Ler"), labels = c("Anc", "Der", "Cvi-0", "NILs", "Ler-0")) +
+  stat_pvalue_manual(stats, label = "p", size = 2)
+
+ggsave(cry2_plot, filename = "./CRY2.pdf", height = 8, width = 14, units = "cm")
+```
+
+## 5.3. CRY2 x FRI
+```{r}
+head(cvi_mor_median)
+# CRY2 effect in CVI conditions in Ft corrected for FRI
+cvi_mor_median$CRY2FRI <- paste0("FRI ", cvi_mor_median$FRI, " CRY2 ", cvi_mor_median$CRY2)
+
+cryfri_plot = ggplot(cvi_mor_median[cvi_mor_median$Island == "SA",], 
+       aes(x= factor(CRY2FRI, level = c('FRI Anc CRY2 Anc', 'FRI Anc CRY2 Der', 'FRI Der CRY2 Anc', 'FRI Der CRY2 Der')), y=Bolting_CVI)) + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(alpha = 0.4, size = 1) +
+  xlab('CVI conditions') + ylab("Bolting days") +
+  #scale_y_continuous(breaks = c(25, 45, 65), limits = c(15, 70)) +
+  stat_summary(fun.data = stat_box_data, geom = "text", size = 1.5) +
+  stat_compare_means(comparisons = list(c('FRI Der CRY2 Anc', 'FRI Der CRY2 Der')),
+    #c('FRI Anc CRY2 Anc', 'FRI Anc CRY2 Der'),
+                                        #c('FRI Anc CRY2 Anc', 'FRI Der CRY2 Anc'),
+                                        #c('FRI Anc CRY2 Anc', 'FRI Der CRY2 Der'),
+                                        #c('FRI Anc CRY2 Der', 'FRI Der CRY2 Anc'),
+                                        #c('FRI Anc CRY2 Der', 'FRI Der CRY2 Der'),
+                                        size = 2, method = "wilcox.test") +
+  my_theme + theme(axis.text.x = element_text(angle = 20, vjust = 1, hjust=1)) + ylim(20, 70)
+
+
+ggsave(cryfri_plot, height = 6, width = 11, units = "cm", filename = "./CRY2_FRI.pdf")
+
+# stats
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$CRY2FRI == "FRI Der CRY2 Anc", "Bolting_CVI"])
+median(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$CRY2FRI == "FRI Der CRY2 Der", "Bolting_CVI"])
+wilcox.test(cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$CRY2FRI == "FRI Der CRY2 Anc", "Bolting_CVI"], cvi_mor_median[cvi_mor_median$Island == "SA" & cvi_mor_median$CRY2FRI == "FRI Der CRY2 Der", "Bolting_CVI"])
+
+summary(lm(Bolting_CVI ~ FRI * CRY2, data = cvi_mor_median[cvi_mor_median$Island == "SA",]))
+summary(lm(Bolting_CVI ~ CRY2 * FRI, data = cvi_mor_median[cvi_mor_median$Island == "SA",]))
+
+TukeyHSD(x=aov(Bolting_CVI ~ CRY2 *  FRI, data = cvi_mor_median[cvi_mor_median$Island == "SA",]), conf.level = 0.95)
+TukeyHSD(x=aov(Bolting_CVI ~ FRI * CRY2, data = cvi_mor_median[cvi_mor_median$Island == "SA",]), conf.level = 0.95)
+
+```
+
+# 6. RNA-seq
+## 6.1. FLC mRNA levels 
+```{r}
+cts = read.table("./cts.txt", header = T, check.names = F)
+head(cts)
+rownames(cts) <- cts$GeneID
+#cts <- cts[, -1]
+cts_melt = reshape2::melt(cts)
+head(cts_melt)
+dim(cts)
+
+#order of these samples has to be the same as in the above file
+ids = read.table("./ids.txt", header = T)
+head(ids)
+rownames(ids) <- ids$library
+dim(ids)
+
+cts_reps = aggregate(cts_melt[,c("value")], by = cts_melt[,c("variable", "GeneID")], FUN = median)
+head(cts_reps)
+
+library(DESeq2)
+ddsMat <- DESeqDataSetFromMatrix(countData = as.matrix(cts[, -1]),
+                                 colData = ids,
+                                 design = ~ sample)
+
+nrow(ddsMat)
+keep <- rowSums(counts(ddsMat)) > 1
+dds <- ddsMat[keep,]
+nrow(dds)
+# at least 3 samples with a count of 10 or higher
+keep <- rowSums(counts(dds) >= 10) >= 3
+
+dds <- DESeq(dds)
+res <- results(dds)
+
+#create one file per accession with the results
+cb=ids$sample
+ab=c(1:2000)
+for (i in 47:160) {
+a <- results(dds, contrast = c("sample", as.character(dds$sample[i]), "Col_0"))
+a$GeneID <- rownames(a)
+write.table(a, paste(cb[i], '.txt'))
+}
+
+#read them in 
+# change working directory
+newFileNames2 = list.files(pattern = "*.txt*")
+
+all_data <- do.call(rbind, lapply(newFileNames2, function(x) transform(read.table(x), File = basename(x))))
+
+#all_data = fread("../../RNA-seq/all_data.txt")
+#head(all_data)
+all_data$File = str_replace(all_data$File, "_", "-")
+rna = merge(all_data, cvi_mor_median, by.x = "File", by.y = "ID")
+head(rna)
+
+#stats
+summary(rna[rna$GeneID == "AT5G10140",])
+
+# plot FLC
+ggscatter(rna[rna$GeneID == "AT5G10140",], x = "log2FoldChange", y = "Bolting_CVI",
+                   fill = "gray", 
+                   add = "reg.line", conf.int = TRUE) +
+           stat_cor(method = "pearson")
+
+```
+
+
+## 6.2. Candidates controling FLC levels 
+```{r}
+# FRI
+ggplot(rna[rna$GeneID == "AT5G10140",]) + 
+  geom_point(aes(x=File, y=log2FoldChange, colour=FRI)) +
+  my_theme + theme(axis.text.x = element_text(angle = 90)) 
+
+# stats
+median(unlist(rna[rna$GeneID == "AT5G10140" & rna$FRI == "Anc", "log2FoldChange"]))
+median(unlist(rna[rna$GeneID == "AT5G10140" & rna$FRI == "Der", "log2FoldChange"]))
+(mean(unlist(rna[rna$GeneID == "AT5G10140" & rna$FRI == "Der", "log2FoldChange"])) - mean(unlist(rna[rna$GeneID == "AT5G10140" & rna$FRI == "Anc", "log2FoldChange"]))) / mean(unlist(rna[rna$GeneID == "AT5G10140" & rna$FRI == "Anc", "log2FoldChange"]))
+
+# ATX2 x FRI
+ggplot(rna[rna$GeneID == "AT5G10140",]) + 
+  geom_point(aes(x=File, y=log2FoldChange, colour=ATX2FRI)) +
+  my_theme + theme(axis.text.x = element_text(angle = 90)) 
+
+
+rna_plot = ggplot(rna[rna$GeneID == "AT5G10140",], aes(x=ATX2FRI, y=log2FoldChange)) + 
+  geom_boxplot(outlier.colour = NA) + geom_jitter(aes(colour=Bolting_CVI)) +
+  my_theme + theme(axis.text.x = element_text(angle = 30,vjust = 1, hjust=1),
+                   legend.position = "right", legend.text=element_text(size=7), legend.title = element_text(size=7)) +
+  scale_colour_gradientn(colours = rainbow(5), name = " Days to bolting") + xlab("") +
+  stat_compare_means(comparisons = list(c("FRI Anc ATX2 Anc", "FRI Anc ATX2 Der"), c("FRI Der ATX2 Anc", "FRI Der ATX2 Der")), size = 2)
+
+ggsave(rna_plot, filename = "./rna_atx_fri.pdf", units = "cm", height = 8, width = 12)
+
+
+# stats
+median(unlist(rna[rna$GeneID == "AT5G10140" & rna$ATX2FRI == "FRI Anc ATX2 Anc", "log2FoldChange"]))
+median(unlist(rna[rna$GeneID == "AT5G10140" & rna$ATX2FRI == "FRI Anc ATX2 Der", "log2FoldChange"]))
+wilcox.test(unlist(rna[rna$GeneID == "AT5G10140" & rna$ATX2FRI == "FRI Anc ATX2 Anc", "log2FoldChange"]), unlist(rna[rna$GeneID == "AT5G10140" & rna$ATX2FRI == "FRI Anc ATX2 Der", "log2FoldChange"]))
+
+median(unlist(rna[rna$GeneID == "AT5G10140" & rna$ATX2FRI == "FRI Der ATX2 Anc", "log2FoldChange"]))
+median(unlist(rna[rna$GeneID == "AT5G10140" & rna$ATX2FRI == "FRI Der ATX2 Der", "log2FoldChange"]))
+wilcox.test(unlist(rna[rna$GeneID == "AT5G10140" & rna$ATX2FRI == "FRI Der ATX2 Anc", "log2FoldChange"]), unlist(rna[rna$GeneID == "AT5G10140" & rna$ATX2FRI == "FRI Der ATX2 Der", "log2FoldChange"]))
+
+summary(lm(log2FoldChange ~ FRI + ATX2, data = rna[rna$GeneID == "AT5G10140",]))
+TukeyHSD(aov(log2FoldChange ~ FRI * ATX2, data = rna[rna$GeneID == "AT5G10140",]))
+
+# NRT1
+ggplot(rna[rna$GeneID == "AT5G10140",]) + 
+  geom_point(aes(x=File, y=log2FoldChange, colour=NRT1)) +
+  my_theme + theme(axis.text.x = element_text(angle = 90)) 
+
+# stats
+median(unlist(rna[rna$GeneID == "AT5G10140" & rna$NRT1 == "Anc", "log2FoldChange"]))
+median(unlist(rna[rna$GeneID == "AT5G10140" & rna$NRT1 == "Der", "log2FoldChange"]))
+(mean(unlist(rna[rna$GeneID == "AT5G10140" & rna$NRT1 == "Der", "log2FoldChange"])) - mean(unlist(rna[rna$GeneID == "AT5G10140" & rna$NRT1 == "Anc", "log2FoldChange"]))) / mean(unlist(rna[rna$GeneID == "AT5G10140" & rna$NRT1 == "Anc", "log2FoldChange"]))
+wilcox.test(unlist(rna[rna$GeneID == "AT5G10140" & rna$NRT1 == "Anc", "log2FoldChange"]), unlist(rna[rna$GeneID == "AT5G10140" & rna$NRT1 == "Der", "log2FoldChange"]))
+
+```
+
+# 7. Genetic architecture
+## 7.1. QTL number
+The number of QTLs involved in the phenotype was estimated with BSLMM in GEMMA, BLINK, and the LMM in GEMMA coupled with the clump function in plink and the Local Score approach. For all except clump, see section 4. 
+For clump, run:
+< plink1.9 --clump <output form GEMMA>
+  --clump-kb 1000
+  --clump-p1 0.000002
+  --clump-r2 0.7
+  --file <input in GEMMA>
+  --out output_Bonf005_1M_70>
+  
+## 7.2. Effect size x allele frequency
+Only SNPs will be used for this analysis. When beta (effect size) is shown with direction (negative/early or positive/late), it means that the effect allele is derived compared to reconstructed ancestor in Morocco for the CVIs and to A. lyrata for the Moroccans. SNPs are considered in asociation according to the local score approach: per QTL identified with the local score, the SNP with the lowest p-value computed by GEMMA was taken as the representative (done manually).
+
+### SA
+```{r}
+## SA ---- already corrected for FRI
+sa = read.table("../../GATK/SA/output/SA_SNPs_Indels_Final_segregating_bolting_CVI_FRIcov_maf_r2.assoc.txt", header = T)
+sa = rbind(sa, sa_lmm[sa_lmm$rs == "4:269719", ])
+
+sign_sa = read.table("../../GATK/SA/LindleyScore/sigZones_SA_CVIcond_FRIcov_maf_r2_10.txt", header = T)
+sign_sa <- sign_sa[order(sign_sa$chr, sign_sa$beg, sign_sa$end),]
+
+sa$found <- ifelse(sapply(sa$ps, function(p) 
+  any(sign_sa$beg <= p & sign_sa$end >= p)),"YES", "NO")
+
+sa$snp <- ifelse(sa$allele1 == sa$allele0, "indel", "SNP")
+sa_sign_snp <- sa[sa$found == "YES" & sa$snp == "SNP",]
+
+# add manually ATX2 and NRT1 and FRI
+sa_sign_snp <- rbind(sa_sign_snp, sa[sa$rs == "1:1754824",], sa[sa$rs == "1:4113448",], sa[sa$rs == "4:269719",])
+sa_sign_snp[order(sa_sign_snp$p_lrt),]
+
+
+# choose the markers manually
+sa_sign_snp <- sa_sign_snp[c(24, 3, 10, 23, 25),]
+
+## annotation
+ann = fread("../../GATK/CapeVerde_SNPs_Indels_Final_segregating.vcf_ann_pop.txt", header = T)
+head(ann)
+
+sa_sign_snp <- merge(sa_sign_snp, ann, by.x = "rs", by.y = "POS")
+
+sa_sign_snp$flip <- ifelse(sa_sign_snp$allele1 == sa_sign_snp$REF, "flip", "keep")
+
+# the "flips" from above need to be flipped so that the effect allele is the derived on the archipelago
+sa_sign_snp$new_af <- ifelse(sa_sign_snp$flip == "flip", 1-sa_sign_snp$af, sa_sign_snp$af)
+
+sa_sign_snp$new_beta <- ifelse(sa_sign_snp$flip == "flip", -2*sa_sign_snp$beta, 2*sa_sign_snp$beta)
+
+# plot
+sa_plot = ggplot(sa_sign_snp, aes(x = new_beta, y = new_af)) +
+  geom_point(colour = sa_col) + xlim(-50, 20) + ylim(0,1) + my_theme +
+  geom_vline(xintercept = 0, linetype = 2) +
+  ylab("Allele frequency") + xlab("")
+
+```
+
+### Fogo
+```{r}
+## Fogo
+fogo = read.table("../../GATK/Fogo/output/Fogo_SNPs_Indels_Final_segregating_bolting_CVICond_005.assoc.txt", header = T)
+
+fogo$snp <- ifelse(fogo$allele1 == fogo$allele0, "indel", "SNP")
+
+sign_fogo = read.table("../../GATK/SA/LindleyScore/sigZones_Fogo_CVIcond_maf.txt", header = T)
+sign_fogo <- sign_fogo[order(sign_fogo$chr, sign_fogo$beg, sign_fogo$end),]
+
+fogo$found <- ifelse(sapply(fogo$ps, function(p) 
+  any(sign_fogo$beg <= p & sign_fogo$end >= p)),"YES", "NO")
+
+fogo_sign_snp <- fogo[fogo$found == "YES" & fogo$snp == "SNP",]
+fogo_sign_snp[order(fogo_sign_snp$p_lrt),]
+
+# choose the markers manually
+fogo_sign_snp <- fogo_sign_snp[c(1, 2, 5, 6, 7, 9, 16, 17, 56, 60, 62, 65, 67, 72, 76, 77, 104, 105, 106, 111, 128, 148, 149, 150, 167),]
+
+fogo_sign_snp <- merge(fogo_sign_snp, ann, by.x = "rs", by.y = "POS")
+
+# add FLC 3X 
+fogo_sign_snp <- rbind(fogo_sign_snp, c("5", "5:3179333", "3179333", NA, "T", "A", 1, -13.5, NA, NA, NA, NA, "0", NA, "SNP", "YES", "5", "3179333", "A", "T", "HIGH", "stop_gained"))
+
+fogo_sign_snp$flip <- ifelse(fogo_sign_snp$allele1 == fogo_sign_snp$REF, "flip", "keep")
+
+
+# the "flips" from above need to be flipped so that the effect allele is the derived on the archipelago
+fogo_sign_snp$new_af <- ifelse(fogo_sign_snp$flip == "flip", 1- as.numeric(fogo_sign_snp$af), fogo_sign_snp$af)
+
+fogo_sign_snp$new_beta <- ifelse(fogo_sign_snp$flip == "flip", -2*as.numeric(fogo_sign_snp$beta), 2*as.numeric(fogo_sign_snp$beta))
+
+# the "looks" mean that the ancestor already had these SNPs. do not flip.
+
+fogo_sign_snp = fogo_sign_snp[!fogo_sign_snp$new_beta == 27,]
+# plot
+fogo_plot = ggplot(fogo_sign_snp, aes(x = as.numeric(new_beta), y = as.numeric(new_af))) +
+  geom_point(colour = fogo_col) + xlim(-50, 20) + ylim(0,1) + my_theme +
+    geom_vline(xintercept = 0, linetype = 2) +
+    ylab("Allele frequency") + xlab("Effect size (days)")
+
+
+
+```
+
+### Morocco
+```{r}
+## Morocco under CVI conditions
+mor = read.table("../../GATK/Morocco/output/Morocco_SNPs_Indels_Final_segregating_bolting_CVICond_005.assoc.txt", header = T)
+mor$snp <- ifelse(mor$allele1 == mor$allele0, "indel", "SNP")
+
+sign_mor = read.table("../../GATK/SA/LindleyScore/sigZones_Mor_CVIcond_maf.txt", header = T)
+sign_mor <- sign_mor[order(sign_mor$chr, sign_mor$beg, sign_mor$end),]
+head(sign_mor)
+sign_mor$beg_coord <- paste(sign_mor$chr, sign_mor$beg, sep = ":")
+sign_mor$end_coord <- paste(sign_mor$chr, sign_mor$end, sep = ":")
+
+# "in" for one marker per QTL
+mor$index_beg <- ifelse(mor$rs %in% sign_mor$beg_coord, "in", "out")
+
+mor_sign_snp <- mor[mor$index_beg == "in" & mor$snp == "SNP",]
+mor_sign_snp[order(mor_sign_snp$p_lrt),]
+
+
+# merge with lyrata 
+lyr = fread("../../GATK/lyrata_and_ancestor/lyrata.txt", header = T)
+head(lyr)
+lyr$chr <- substring(lyr$V1, 4)
+lyr$rs <- as.factor(paste(lyr$chr, lyr$V2, sep = ":"))
+
+#  check if the effect allele (minor allele for GEMMA, allele1 column) is  derived compared to the ancestor; if the SNP is in the ancestor file it means it is different from Col-0, if not the anc is the fogome as Col-0 and different in CVI
+mor_sign_snp$flip <- ifelse(mor_sign_snp$rs %in% lyr$rs, "look", "flip")
+
+# the "flips" from above need to be flipped so that the effect allele is the derived on the archipelago
+mor_sign_snp$new_af <- ifelse(mor_sign_snp$flip == "flip", 1- as.numeric(mor_sign_snp$af), mor_sign_snp$af)
+
+mor_sign_snp$new_beta <- ifelse(mor_sign_snp$flip == "flip", -2*as.numeric(mor_sign_snp$beta), 2*mor_sign_snp$beta)
+
+# the "looks" mean that the ancestor already had these SNPs. do not flip.
+
+# plot
+mor_plot = ggplot(mor_sign_snp, aes(x = as.numeric(new_beta), y = as.numeric(new_af))) +
+  geom_point(colour = mor_col) + xlim(-50, 20) + ylim(0,1) + my_theme +
+    geom_vline(xintercept = 0, linetype = 2) +
+  xlab("") + ylab("Allele frequency")
+
+
+ggplot(mor_sign_snp[mor_sign_snp$new_beta > 0, ]) + geom_histogram(aes(new_af)) 
+
+#test uniformity of allele freq
+ks.test(mor_sign_snp[mor_sign_snp$new_beta < 0, "new_af"], "punif")
+ks.test(mor_sign_snp[mor_sign_snp$new_beta > 0, "new_af"], "punif")
+
+# test for correlation between allele freq and beta
+cor.test(mor_sign_snp[mor_sign_snp$new_beta < 0, "new_af"], abs(mor_sign_snp[mor_sign_snp$new_beta < 0, "new_beta"]), method = "pearson")
+cor.test(mor_sign_snp[mor_sign_snp$new_beta > 0, "new_af"],mor_sign_snp[mor_sign_snp$new_beta > 0, "new_beta"], method = "pearson")
+
+summary(lm(abs(new_beta) ~ new_af, mor_sign_snp[mor_sign_snp$new_beta > 0,]))
+summary(lm(new_beta ~ new_af, mor_sign_snp[mor_sign_snp$new_beta < 0,]))
+
+
+
+ggsave(ggarrange(mor_plot, sa_plot, fogo_plot, ncol = 1), filename = "./betaxaf_allpops.pdf", height = 18, width = 10, units = "cm")
+
+
+
+## Morocco under Moroccan conditions
+mor_mor = read.table("../../GATK/Morocco/output/Morocco_SNPs_Indels_Final_segregating_bolting_MorCond_005.assoc.txt", header = T)
+mor_mor$snp <- ifelse(mor_mor$allele1 == mor_mor$allele0, "indel", "SNP")
+
+sign_mor_mor = read.table("../../GATK/SA/LindleyScore/SigZones_Mor_bolting_MorCond.txt", header = T)
+sign_mor_mor <- sign_mor_mor[order(sign_mor_mor$chr, sign_mor_mor$beg, sign_mor_mor$end),]
+head(sign_mor_mor)
+sign_mor_mor$beg_coord <- paste(sign_mor_mor$chr, sign_mor_mor$beg, sep = ":")
+sign_mor_mor$end_coord <- paste(sign_mor_mor$chr, sign_mor_mor$end, sep = ":")
+
+# "in" for one marker per QTL
+mor_mor$index_beg <- ifelse(mor_mor$rs %in% sign_mor_mor$beg_coord, "in", "out")
+
+mor_mor_sign_snp <- mor_mor[mor_mor$index_beg == "in" & mor_mor$snp == "SNP",]
+mor_mor_sign_snp[order(mor_mor_sign_snp$p_lrt),]
+
+
+# merge with lyrata 
+lyr = fread("../../GATK/lyrata_and_ancestor/lyrata.txt", header = T)
+head(lyr)
+lyr$chr <- substring(lyr$V1, 4)
+lyr$rs <- as.factor(paste(lyr$chr, lyr$V2, sep = ":"))
+
+#  check if the effect allele (minor allele for GEMMA, allele1 column) is  derived compared to the ancestor; if the SNP is in the ancestor file it means it is different from Col-0, if not the anc is the fogome as Col-0 and different in CVI
+mor_mor_sign_snp$flip <- ifelse(mor_mor_sign_snp$rs %in% lyr$rs, "look", "flip")
+
+# the "flips" from above need to be flipped so that the effect allele is the derived on the archipelago
+mor_mor_sign_snp$new_af <- ifelse(mor_mor_sign_snp$flip == "flip", 1- as.numeric(mor_mor_sign_snp$af), mor_mor_sign_snp$af)
+
+mor_mor_sign_snp$new_beta <- ifelse(mor_mor_sign_snp$flip == "flip", -2*as.numeric(mor_mor_sign_snp$beta), 2*mor_mor_sign_snp$beta)
+
+# the "looks" mean that the ancestor already had these SNPs. do not flip.
+
+# plot
+mor_plot = ggplot(mor_mor_sign_snp, aes(x = as.numeric(new_beta), y = as.numeric(new_af))) +
+  geom_point(colour = mor_col) + xlim(-50, 20) + ylim(0,1) + my_theme +
+    geom_vline(xintercept = 0, linetype = 2)
+
+
+#test uniformity of allele freq
+ks.test(mor_mor_sign_snp[mor_mor_sign_snp$new_beta < 0, "new_af"], "punif")
+ks.test(mor_mor_sign_snp[mor_mor_sign_snp$new_beta > 0, "new_af"], "punif")
+
+# test for correlation between allele freq and beta
+cor.test(mor_mor_sign_snp[mor_mor_sign_snp$new_beta < 0, "new_af"], abs(mor_mor_sign_snp[mor_mor_sign_snp$new_beta < 0, "new_beta"]), method = "pearson")
+cor.test(mor_mor_sign_snp[mor_mor_sign_snp$new_beta > 0, "new_af"], mor_mor_sign_snp[mor_mor_sign_snp$new_beta > 0, "new_beta"], method = "pearson")
+
+
+```
+
+
+## 7.3. Effect size distribution
+```{r}
+head(sa_sign_snp)
+sa_sign_snp$island <- "SA"
+head(fogo_sign_snp)
+fogo_sign_snp$island <- "Fogo"
+fogo_sign_snp$new_af <- as.numeric(fogo_sign_snp$new_af)
+fogo_sign_snp$new_beta <- as.numeric(fogo_sign_snp$new_beta)
+fogo_sign_snp$chr <- as.numeric(fogo_sign_snp$chr)
+head(mor_sign_snp)
+mor_sign_snp$island <- "Morocco"
+
+pops = bind_rows(sa_sign_snp[c("rs", "new_beta", "new_af", "island")], fogo_sign_snp[c("rs", "new_beta", "new_af", "island")], mor_sign_snp[c("rs", "new_beta", "new_af", "island")])
+
+pop_plot = ggplot(pops, aes(x = factor(island, level = c("Morocco", "SA", "Fogo")), y = abs(as.numeric(new_beta)))) +
+  geom_violin() +
+  geom_jitter(aes(colour = island)) +
+  my_theme + xlab("") + ylab("Effect size (days)") + ylim(0, 50) +
+  scale_color_manual(values = c(fogo_col, mor_col, sa_col)) +
+  stat_compare_means(comparisons = list(c("Morocco", "SA"), c("SA", "Fogo"), c("Morocco", "Fogo")), method = "wilcox.test", size = 2)
+
+## add Eurasians
+euro = read.table("../../1001/output/1001_maf005.assoc.txt", header = T)
+sign_euro = read.table("../../GATK/SA/LindleyScore/SigZones_1001_bolting16C.txt", header = T)
+sign_euro$rs <- paste(sign_euro$chr, sign_euro$beg, sep = ":")
+euro$sign <- ifelse(euro$rs %in% sign_euro$rs, "sign", "non-sign")
+head(euro)
+euro_slim = euro[euro$sign == "sign", c("rs", "beta", "af")]
+euro_slim$island <- "Europe"
+head(euro_slim)
+colnames(euro_slim) <- c("rs", "new_beta", "new_af", "island")
+head(pops)
+
+all = rbind(pops, euro_slim)
+
+euro_plot = ggplot(all, aes(x = factor(island, level = c("Europe", "Morocco", "SA", "Fogo")), y = abs(2*as.numeric(new_beta)))) +
+  geom_boxplot(outlier.colour = NA) +
+  geom_jitter(aes(colour = island)) +
+  my_theme + xlab("Island") + ylab("Effect size (days)") + 
+  scale_color_manual(values = c("black", fogo_col, mor_col, sa_col)) +
+  stat_compare_means(comparisons = list(c("Morocco", "SA"), c("SA", "Fogo"), c("Morocco", "Fogo"),
+                                        c("Europe", "Morocco"), c("Europe", "SA"), c("Europe", "Fogo")), method = "wilcox.test", size = 2)
+
+## add QTL
+qtl <- read.table("../../QTLs/qtl_ft_4_noPaths_clean.txt", header = T)
+head(qtl)
+qtl$island <- "QTL"
+
+qtl_plot = ggplot(qtl, aes(x=1, y=abs(days))) + geom_violin() + geom_jitter() +
+  my_theme +
+  xlab("") + ylab("Effect size (days)") +
+  scale_x_discrete(limits = c("QTL")) +
+  ylim(0, 50)
+
+qtl$days
+
+fwu <- fitdist(abs(qtl$days), "unif") 
+summary(fwu)
+fwe <- fitdist(abs(qtl$days), "exp")
+summary(fwe)
+
+ggsave(ggarrange(pop_plot, qtl_plot, widths = c(4,1)), filename = "./distrSize_pops_qtl_violin.pdf", height = 7.6, width = 16, units = "cm")
+
+ggsave(euro_plot, filename = "./distrSize_pops_euro.pdf", height = 7.6, width = 13, units = "cm")
+
+```  
+
+## Comparison between pops
+```{r}
+nrow(sa_sign_snp)
+nrow(fogo_sign_snp)
+nrow(mor_sign_snp)
+
+median(abs(sa_sign_snp$new_beta))
+median(abs(fogo_sign_snp$new_beta))
+median(abs(mor_sign_snp$new_beta))
+
+min(abs(sa_sign_snp$new_beta))
+min(abs(fogo_sign_snp$new_beta))
+min(abs(mor_sign_snp$new_beta))
+
+max(abs(sa_sign_snp$new_beta))
+max(abs(fogo_sign_snp$new_beta))
+max(abs(mor_sign_snp$new_beta))
+
+##test fit
+library(fitdistrplus)
+# Morocco
+#fwn <- fitdist(abs(mor_sign_snp$new_beta), "norm") 
+#summary(fwn)
+fwu <- fitdist(abs(mor_sign_snp$new_beta), "unif") 
+summary(fwu)
+fwe <- fitdist(abs(mor_sign_snp$new_beta), "exp")
+summary(fwe)
+
+plot.legend <- c("Normal", "Uniform", "Exponential")
+denscomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+qqcomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+cdfcomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+ppcomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+
+# SA
+fwn <- fitdist(abs(sa_sign_snp$new_beta), "norm") 
+summary(fwn)
+fwu <- fitdist(abs(sa_sign_snp$new_beta), "unif") 
+summary(fwu)
+fwe <- fitdist(abs(sa_sign_snp$new_beta), "exp")
+summary(fwe)
+
+plot.legend <- c("Normal", "Uniform", "Exponential")
+denscomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+qqcomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+cdfcomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+ppcomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+
+# Fogo
+fwn <- fitdist(abs(as.numeric(fogo_sign_snp$new_beta)), "norm") 
+summary(fwn)
+fwu <- fitdist(abs(as.numeric(fogo_sign_snp$new_beta)), "unif") 
+summary(fwu)
+fwe <- fitdist(abs(as.numeric(fogo_sign_snp$new_beta)), "exp")
+summary(fwe)
+
+plot.legend <- c("Normal", "Uniform", "Exponential")
+denscomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+qqcomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+cdfcomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+ppcomp(list(fwn, fwu, fwe), legendtext = plot.legend)
+
+```
+
+
+## 7.4. Predicted effect
+```{r}
+## annotation
+ann = fread("../../GATK/CapeVerde_SNPs_Indels_Final_segregating.vcf_ann_pop.txt", header = T)
+head(ann)
+
+
+## SA
+head(sa_sign_snp)
+sa_sign_snp = merge(sa_sign_snp, ann, by.x = "rs", by.y = "POS", all.x = T)
+
+sa_sign_snp %>% 
+  group_by(Impact) %>%
+  summarise(freq = length(Impact)/nrow(sa_sign_snp))
+
+ggplot(sa_sign_snp, aes(x = new_beta, y = new_af)) +
+  geom_point(colour = sa_col) + xlim(-50, 20) + ylim(0,1) + my_theme +
+  theme(legend.position = "right") +
+  geom_vline(xintercept = 0, linetype = 2)
+
+## Fogo
+head(fogo_sign_snp)
+fogo_sign_snp = merge(fogo_sign_snp, ann, by.x = "rs", by.y = "POS", all.x = T)
+fogo_sign_snp[fogo_sign_snp$ps == "3119333", "Impact"] <- "HIGH"
+
+fogo_sign_snp %>% 
+  group_by(Impact) %>%
+  summarise(freq = length(Impact)/nrow(fogo_sign_snp),
+            counts = length(Impact))
+
+ggplot(fogo_sign_snp, aes(x = as.numeric(new_beta), y = as.numeric(new_af))) +
+  geom_point(colour = fogo_col) + xlim(-50, 20) + ylim(0,1) + my_theme +
+  theme(legend.position = "right") +
+  geom_vline(xintercept = 0, linetype = 2)
+
+## Morocco
+head(mor_sign_snp)
+#ann_mor = fread("../../GATK/Morocco/Morocco_SNPs_Indels_segregating_noContam.ann.vcf", skip = 300)
+#head(ann_mor)
+
+# mor_sign_snp = fread("/Users/neto/MPIPZ/netscratch/irg/grp_hancock/Celia/GATK/Morocco/mor_sign_snp_ann.txt", head = T)
+
+#mor_sign_snp = merge(mor_sign_snp, ann, by.x = "rs", by.y = "POS", all.x = T)
+
+mor_sign_snp %>% 
+  group_by(Impact) %>%
+  summarise(freq = length(Impact)/nrow(mor_sign_snp))
+
+ggplot(mor_sign_snp, aes(x = as.numeric(new_beta), y = as.numeric(new_af))) +
+  geom_point(colour = mor_col) + xlim(-50, 20) + ylim(0,1) + my_theme +
+  theme(legend.position = "right") +
+  geom_vline(xintercept = 0, linetype = 2)
+
+
+eff = ggplot(mor_sign_snp, aes(x=factor(Impact, levels = c("MODERATE", "MODIFIER", "LOW")), y=new_af)) + 
+  geom_boxplot(outlier.colour = NA)  + geom_jitter(aes(colour = abs(new_beta))) +
+    scale_colour_gradientn(colours = rainbow(5), name = "Effect size") +
+  stat_compare_means(comparisons = list(c("MODIFIER", "MODERATE"), c("MODERATE", "LOW"), c("LOW", "MODIFIER")), method = "wilcox.test", size = 2) +
+  my_theme + theme(legend.position = "right", legend.text=element_text(size=7), legend.title = element_text(size=7)) + ylab("Allele frequency")  + xlab("Predicted impact")
+
+ggsave(height = 8, width = 12, units = "cm", filename = "./effect_Morocco.pdf", eff)
+
+wilcox.test(mor_sign_snp[mor_sign_snp$Impact == "MODIFIER", "new_af"], mor_sign_snp[mor_sign_snp$Impact == "LOW", "new_af"])
+wilcox.test(mor_sign_snp[mor_sign_snp$Impact == "MODIFIER", "new_af"], mor_sign_snp[mor_sign_snp$Impact == "MODERATE", "new_af"])
+wilcox.test(mor_sign_snp[mor_sign_snp$Impact == "MODERATE", "new_af"], mor_sign_snp[mor_sign_snp$Impact == "LOW", "new_af"])
+
+ggplot(mor_sign_snp, aes(x=factor(Impact, levels = c("MODERATE", "MODIFIER", "LOW")), y=abs(new_beta))) + 
+  geom_boxplot(outlier.colour = NA)  + geom_jitter(aes(colour = new_af)) +
+    scale_colour_gradientn(colours = rainbow(5)) +
+  stat_compare_means(comparisons = list(c("MODIFIER", "MODERATE"), c("MODERATE", "LOW"), c("LOW", "MODIFIER")), method = "wilcox.test") +
+  my_theme + theme(legend.position = "right") 
+
+wilcox.test(abs(mor_sign_snp[mor_sign_snp$Impact == "MODIFIER", "new_beta"]), abs(mor_sign_snp[mor_sign_snp$Impact == "LOW", "new_beta"]))
+wilcox.test(abs(mor_sign_snp[mor_sign_snp$Impact == "MODIFIER", "new_beta"]), abs(mor_sign_snp[mor_sign_snp$Impact == "MODERATE", "new_beta"]))
+wilcox.test(abs(mor_sign_snp[mor_sign_snp$Impact == "MODERATE", "new_beta"]), abs(mor_sign_snp[mor_sign_snp$Impact == "LOW", "new_beta"]))
+
+#Morocco
+mor_sign_snp$Impact <- factor(mor_sign_snp$Impact, levels = c("HIGH", "MODERATE", "MODIFIER", "LOW"))
+
+model <- lm(new_af ~ Impact, mor_sign_snp)
+summary(model)
+
+model2 <- lm(abs(new_beta) ~ Impact, mor_sign_snp)
+summary(model2)
+
+#SA
+sa_sign_snp$Impact <- factor(sa_sign_snp$Impact, levels = c("HIGH", "MODERATE", "MODIFIER", "LOW"))
+
+model <- lm(new_af ~ Impact, sa_sign_snp)
+summary(model)
+
+model2 <- lm(abs(new_beta) ~ Impact, sa_sign_snp)
+summary(model2)
+
+model3 <- lm(abs(new_beta) ~ age_begin, sa_sign_snp)
+summary(model3)
+
+#Fogo
+fogo_sign_snp$Impact <- factor(fogo_sign_snp$Impact, levels = c("HIGH", "MODERATE", "MODIFIER", "LOW"))
+
+model <- lm(new_af ~ Impact, fogo_sign_snp)
+summary(model)
+load("myEnvironment.RData")
+
+model2 <- lm(abs(new_beta) ~ Impact, fogo_sign_snp)
+summary(model2)
+
+model3 <- lm(abs(as.numeric(fogo_sign_snp$new_beta)) ~ as.numeric(age_begin), fogo_sign_snp)
+summary(model3)
+
+```
+
+## 7.5. Age distribution
+
+### Morocco
+```{r}
+###### do it for all chrs
+mut_chr1 = read.table('./Mor_lyrata_gw_relate_chr1.resample.mut', header = T, sep = ";")
+mut_chr2 = read.table('./Mor_lyrata_gw_relate_chr1.resample.mut', header = T, sep = ";")
+mut_chr3 = read.table('./Mor_lyrata_gw_relate_chr1.resample.mut', header = T, sep = ";")
+mut_chr4 = read.table('./Mor_lyrata_gw_relate_chr1.resample.mut', header = T, sep = ";")
+mut_chr5 = read.table('./Mor_lyrata_gw_relate_chr1.resample.mut', header = T, sep = ";")
+
+mut_chr1$chr = 1
+mut_chr2$chr = 2
+mut_chr3$chr = 3
+mut_chr4$chr = 4
+mut_chr5$chr = 5
+
+mut_final = rbind(mut_chr1, mut_chr2, mut_chr3, mut_chr4, mut_chr5)
+mut_final$coord <- paste(mut_final$chr, mut_final$pos_of_snp, sep = ":")
+write.table(mut_final, file = "./mut_final.txt", row.names = F, quote = F)
+
+pruned = read.table("/Users/neto/MPIPZ/netscratch/irg/grp_hancock/Celia/GATK/Morocco/Morocco_SNPs_Indels_segregating_noContam_pruned_50_10_0.3.prune.in")
+head(pruned)
+pruned$coord <- paste(pruned$V1, pruned$V2, sep = ":")
+
+# keep only pruned variants
+mut_final$pruned <- ifelse(mut_final$coord %in% pruned$coord, "1", "0")
+head(mut_final)
+
+# mark significant QTLs
+mut_final$qtl <- ifelse(mut_final$coord %in% mor_sign_snp$rs, "1", "0")
+
+#plot
+ggplot() + geom_histogram(data = mut_final[mut_final$pruned == "1",], aes(age_begin)) +
+  geom_vline(xintercept = mut_final[mut_final$qtl == "1", "age_begin"]) +
+  my_theme + xlab("Age")
+
+```
+
+### SA
+```{r}
+###### do it for all chrs
+mut_chr1 = read.table('../../Relate2.0/SA/chr1_relate_resample.mut', header = T, sep = ";")
+mut_chr2 = read.table('../../Relate2.0/SA/chr2_relate_resample.mut', header = T, sep = ";")
+mut_chr3 = read.table('../../Relate2.0/SA/chr3_relate_resample.mut', header = T, sep = ";")
+mut_chr4 = read.table('../../Relate2.0/SA/chr4_relate_resample.mut', header = T, sep = ";")
+mut_chr5 = read.table('../../Relate2.0/SA/chr5_relate_resample.mut', header = T, sep = ";")
+
+mut_chr1$chr = 1
+mut_chr2$chr = 2
+mut_chr3$chr = 3
+mut_chr4$chr = 4
+mut_chr5$chr = 5
+
+mut_final = rbind(mut_chr1, mut_chr2, mut_chr3, mut_chr4, mut_chr5)
+mut_final$coord <- paste(mut_final$chr, mut_final$pos_of_snp, sep = ":")
+write.table(mut_final, file = "./mut_final.txt", row.names = F, quote = F)
+
+pruned = read.table("../../GATK/SA/SA_SNPs_Indels_Final_segregating_SNPonly_pruned_50_10_0.3.prune.in")
+head(pruned)
+
+# keep only pruned variants
+mut_final$pruned <- ifelse(mut_final$coord %in% pruned$V1, "1", "0")
+head(mut_final)
+
+# mark significant QTLs
+mut_final$qtl <- ifelse(mut_final$coord %in% sa_sign_snp$rs, "1", "0")
+
+#plot
+ggplot() + geom_histogram(data = mut_final[mut_final$pruned == "1",], aes(age_begin)) +
+  geom_vline(xintercept = mut_final[mut_final$qtl == "1", "age_begin"]) +
+  geom_vline(xintercept = mut_final[mut_final$coord == "1:1754824", "age_begin"]) + #ATX2
+  geom_vline(xintercept = mut_final[mut_final$coord == "1:4113448", "age_begin"]) + #NRT1
+  my_theme + xlab("Age")
+
+
+# QTLs vs genome
+qtls <- c(mut_final[mut_final$qtl == "1", "age_begin"], mut_final[mut_final$coord == "1:1754824", "age_begin"], mut_final[mut_final$coord == "1:4113448", "age_begin"]) 
+ks.test(mut_final[mut_final$pruned == "1", "age_begin"], qtls)
+mean(mut_final[mut_final$pruned == "1", "age_begin"])
+mean(qtls)
+
+```
+
+### Fogo
+```{r}
+###### do it for all chrs
+mut_chr1 = read.table('./Fogo_relate_chr1_resample.mut', header = T, sep = ";")
+mut_chr2 = read.table('./Fogo_relate_chr2_resample.mut', header = T, sep = ";")
+mut_chr3 = read.table('./Fogo_relate_chr3_resample.mut', header = T, sep = ";")
+mut_chr4 = read.table('./Fogo_relate_chr4_resample.mut', header = T, sep = ";")
+mut_chr5 = read.table('./Fogo_relate_chr5_resample.mut', header = T, sep = ";")
+
+mut_chr1$chr = 1
+mut_chr2$chr = 2
+mut_chr3$chr = 3
+mut_chr4$chr = 4
+mut_chr5$chr = 5
+
+mut_final = rbind(mut_chr1, mut_chr2, mut_chr3, mut_chr4, mut_chr5)
+mut_final$coord <- paste(mut_final$chr, mut_final$pos_of_snp, sep = ":")
+write.table(mut_final, file = "./mut_final.txt", row.names = F, quote = F)
+
+pruned = read.table("../../GATK/Fogo/Fogo_SNPs_Indels_Final_segregating_pruned_50_10_0.3.prune.in")
+head(pruned)
+pruned$coord <- paste(pruned$V1, pruned$V2, sep = ":")
+
+# mark pruned variants
+mut_final$pruned <- ifelse(mut_final$coord %in% pruned$coord, "1", "0")
+head(mut_final)
+
+# mark significant QTLs
+mut_final$qtl <- ifelse(mut_final$coord %in% fogo_sign_snp$rs, "1", "0")
+
+#plot
+ggplot() + geom_histogram(data = mut_final[mut_final$pruned == "1",], aes(age_begin)) +
+  geom_vline(xintercept = mut_final[mut_final$qtl == "1", "age_begin"]) +
+  geom_vline(xintercept = 3305) + #FLC
+  my_theme + xlab("Age")
+
+# QTLs vs genome
+qtls <- c(mut_final[mut_final$qtl == "1", "age_begin"], 3305) 
+ks.test(mut_final[mut_final$pruned == "1", "age_begin"], qtls)
+mean(mut_final[mut_final$pruned == "1", "age_begin"])
+mean(qtls)
+
+```
+
+## 7.6. Age x allele frequency
+
+### Morocco
+```{r}
+head(mut_final)
+head(mor_sign_snp)
+
+mor_sign_snp <- merge(mor_sign_snp, mut_final[c("coord", "age_begin")], by.x = "rs", by.y = "coord", all.x = T)
+
+ggplot(mor_sign_snp, aes(x=age_begin, y=as.numeric(new_af), colour = as.numeric(new_beta), shape = Impact)) +
+  geom_point(size = 3) +
+  my_theme + ylim(0, 1) + xlab("Age") + ylab("Allele frequency") +
+      scale_colour_gradientn(colours = rainbow(5), limits = c(-40, 40)) +
+  theme(legend.position = "right") +
+  scale_shape_manual(values = c(15, 17, 18))
+
+write.table(mor_sign_snp, file = "Morocco_representativeSNPs.txt", quote = F, row.names = F, sep = " ")
+
+```
+
+### SA
+```{r}
+head(mut_final)
+head(sa_sign_snp)
+
+sa_sign_snp <- merge(sa_sign_snp, mut_final[c("coord", "age_begin")], by.x = "rs", by.y = "coord", all.x = T)
+
+ggplot(sa_sign_snp, aes(x=age_begin, y=as.numeric(new_af), colour = as.numeric(new_beta), shape = Impact)) +
+  geom_point(size = 3) +
+  my_theme + ylim(0, 1) + xlab("Age") + ylab("Allele frequency") +
+      scale_colour_gradientn(colours = rainbow(5), limits = c(-40, 40)) +
+  theme(legend.position = "right") +
+  scale_shape_manual(values = c(16, 17, 18))
+
+# age x beta
+cor.test(abs(sa_sign_snp$new_beta), sa_sign_snp$age_begin)
+
+write.table(sa_sign_snp, file = "SA_representativeSNPs.txt", quote = F, row.names = F, sep = " ")
+
+### compare to background
+
+back_sa = merge(sa, mut_final, by.x = "rs", by.y = "coord")
+back_sa <- merge(back_sa, ann, by.x = "rs", by.y = "POS")
+
+head(back_sa)
+back_sa$ancestral <- substring(back_sa$ancestral_allele.alternative_allele, first = 1, last = 1)
+back_sa$flip <- ifelse(back_sa$ancestral == back_sa$allele1, "flip", "keep")
+back_sa$new_af <- ifelse(back_sa$flip == "flip", 1-back_sa$af, back_sa$af)
+back_sa$new_beta <- ifelse(back_sa$flip == "flip", -2*back_sa$beta, 2*back_sa$beta)
+
+
+#plot
+sa_af_plot = ggplot() + geom_point(data = back_sa[back_sa$pruned == 1,], aes(x=as.numeric(age_begin), y=as.numeric(new_af)), colour = "grey90", alpha = 0.5) +
+  my_theme + ylim(0,1) + xlim(0, 5000) + 
+  geom_point(data =back_sa[back_sa$qtl == 1,], aes(x=as.numeric(age_begin), y=as.numeric(new_af), colour = as.numeric(new_beta), shape = Impact), size = 2) +
+   scale_shape_manual(values = c(16, 17, 18)) +
+  xlab("Age") + ylab("Allele frequency") +
+scale_colour_gradientn(colours = rainbow(5), name = "Effect size (days)", limits = c(-40, 10)) + theme(legend.position = "right", legend.text=element_text(size=7), legend.title = element_text(size=7))
+
+
+```
+
+## Fogo
+```{r}
+head(mut_final)
+head(fogo_sign_snp)
+
+fogo_sign_snp <- merge(fogo_sign_snp, mut_final[c("coord", "age_begin")], by.x = "rs", by.y = "coord", all.x = T)
+
+fogo_sign_snp[fogo_sign_snp$ps == "3179333", "age_begin"] <- "3305"
+
+ggplot(fogo_sign_snp, aes(x=as.numeric(age_begin), y=as.numeric(new_af), colour = as.numeric(new_beta), shape = Impact)) +
+  geom_point(size = 3) +
+  my_theme + ylim(0, 1) + xlab("Age") + ylab("Allele frequency") +
+      scale_colour_gradientn(colours = rainbow(5), limits = c(-40, 40)) +
+  theme(legend.position = "right") +
+  scale_shape_manual(values = c(16, 15, 17, 18))
+
+
+# age x beta
+fogo_sign_snp$age_begin <- as.numeric(fogo_sign_snp$age_begin)
+fogo_sign_snp$direction <- ifelse(fogo_sign_snp$new_beta > 0 , "+", "-")
+
+cor.test(abs(as.numeric(fogo_sign_snp$new_beta)), as.numeric(fogo_sign_snp$age_begin))
+
+summary(lm(age_begin ~ direction, fogo_sign_snp))
+
+write.table(fogo_sign_snp, file = "Fofo_representativeSNPs.txt", quote = F, row.names = F, sep = " ")
+
+### compare to background
+
+back_fogo = merge(fogo_lmm, mut_final, by.x = "rs", by.y = "coord")
+head(back_fogo)
+back_fogo <- merge(back_fogo, ann, by.x = "rs", by.y = "POS")
+
+back_fogo$ancestral <- substring(back_fogo$ancestral_allele.alternative_allele, first = 1, last = 1)
+back_fogo$flip <- ifelse(back_fogo$ancestral == back_fogo$allele1, "flip", "keep")
+back_fogo$new_af <- ifelse(back_fogo$flip == "flip", 1-as.numeric(back_fogo$af), back_fogo$af)
+back_fogo$new_beta <- ifelse(back_fogo$flip == "flip", -2*as.numeric(back_fogo$beta), 2*as.numeric(back_fogo$beta))
+
+back_fogo <- rbind(back_fogo, c("5:3179333", 5, 3179333, 0, NA, NA, 1, 27, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, 3305, NA, "A/T", NA, 5, 1, 1, 5, 3179333, "A", "T", "HIGH", "stop_codon", NA, NA, 1, -27))
+
+#plot
+fogo_af_plot = ggplot() + geom_point(data = back_fogo[back_fogo$pruned == 1,], aes(x=as.numeric(age_begin), y=as.numeric(new_af)), colour="grey90", alpha = 0.5) +
+  my_theme + ylim(0,1) + xlim(0, 5000) + 
+  geom_point(data =back_fogo[back_fogo$qtl == 1,], aes(x=as.numeric(age_begin), y=as.numeric(new_af), colour = as.numeric(new_beta), shape = Impact ), size = 2) +
+   scale_shape_manual(values = c(16, 15, 17, 18)) +
+  xlab("Age") + ylab("Allele frequency") +
+scale_colour_gradientn(colours = rainbow(5), name = "Effect size (days)", limits = c(-40, 10)) + theme(legend.position = "right", legend.text=element_text(size=7), legend.title = element_text(size=7))
+
+
+ggsave(ggarrange(sa_af_plot, fogo_af_plot, nrow = 2, common.legend = T, legend = "right"), height = 10, width = 12, units = "cm", filename = "./af_beta_v_beta.pdf")
+
+
+save.image(file='myEnvironment.RData')
+
+```
+
+
+
